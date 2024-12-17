@@ -1,11 +1,14 @@
+use std::fs;
 use std::io::Stdout;
 use std::io::{stdin, stdout, Write};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::{IntoRawMode, RawTerminal};
 
 static THRESHOLD: OnceLock<Mutex<(u8, u8)>> = OnceLock::new();
+static SIGNAL_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 pub fn reset() {
     let mut data = THRESHOLD.get_or_init(|| Mutex::new((0, 0))).lock().unwrap();
@@ -31,6 +34,18 @@ pub fn get() -> (u8, u8) {
 }
 
 pub fn step<T: AsRef<str>, S: FnOnce() -> T>(msg: S, level: u8) {
+    let path = SIGNAL_PATH.get_or_init(|| {
+        let pid = std::process::id();
+        PathBuf::from(format!("dbg_step_{}", pid))
+    });
+    if path.is_file() {
+        let _ = fs::remove_file(path);
+        println!(
+            "{{*}}: Reset because '{}' was found in the current working directory.",
+            path.display()
+        );
+        reset();
+    }
     let level = level.min(9);
     let (mut print_threshold, mut pause_threshold) = get();
     if level >= print_threshold {
@@ -44,7 +59,7 @@ pub fn step<T: AsRef<str>, S: FnOnce() -> T>(msg: S, level: u8) {
             |print_threshold, pause_threshold, stdout: &mut RawTerminal<Stdout>| {
                 write!(
                     stdout,
-                    "\r{{{},{}}}: Keys [0-9] set limit, \u{21E7}[0-9] set pause limit, 'q' quits, ' ' continues ", print_threshold, pause_threshold)
+                    "\r{{{},{},{}}}: Keys [0-9] set limit, \u{21E7}[0-9] set pause limit, 'q' quits, ' ' continues ", print_threshold, pause_threshold, path.display())
                 .unwrap();
                 stdout.flush().unwrap();
             };
