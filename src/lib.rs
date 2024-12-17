@@ -35,7 +35,7 @@ pub fn step<T: AsRef<str>, S: FnOnce() -> T>(msg: S, level: u8) {
     let (mut print_threshold, mut pause_threshold) = get();
     if level >= print_threshold {
         let mut stdout = stdout().into_raw_mode().unwrap();
-        writeln!(stdout, "<{}> {}\r", level, msg().as_ref()).unwrap();
+        writeln!(stdout, "{{{}}}: {}\r", level, msg().as_ref()).unwrap();
         stdout.flush().unwrap();
         if level < pause_threshold {
             return;
@@ -44,7 +44,7 @@ pub fn step<T: AsRef<str>, S: FnOnce() -> T>(msg: S, level: u8) {
             |print_threshold, pause_threshold, stdout: &mut RawTerminal<Stdout>| {
                 write!(
                     stdout,
-                    "DBG_STEP(Print:{}, Pause:{}): < > Continue, [0-9] Set print threshold, Shift-[0-9] Set pause threshold ", print_threshold, pause_threshold)
+                    "\r{{{},{}}}: Keys [0-9] set limit, \u{21E7}[0-9] set pause limit, 'q' quits, ' ' continues ", print_threshold, pause_threshold)
                 .unwrap();
                 stdout.flush().unwrap();
             };
@@ -54,17 +54,18 @@ pub fn step<T: AsRef<str>, S: FnOnce() -> T>(msg: S, level: u8) {
             for key in stdin.keys() {
                 if let Ok(key) = key {
                     match key {
-                        Key::Ctrl('c') => {
-                            writeln!(stdout, "Ctrl-c\r").unwrap();
+                        Key::Char('q') | Key::Ctrl('c') => {
+                            write!(stdout, "\r\x1B[2K").unwrap();
+                            stdout.flush().unwrap();
                             set(10, 10, true);
                             break 'outer;
                         }
                         Key::Char(' ') | Key::Char('\n') => {
-                            writeln!(stdout, "\r").unwrap();
+                            write!(stdout, "\r\x1B[2K").unwrap();
+                            stdout.flush().unwrap();
                             break 'outer;
                         }
                         Key::Char(e) if e >= '0' && e <= '9' => {
-                            writeln!(stdout, "{}\r", e).unwrap();
                             (print_threshold, pause_threshold) = set(
                                 e.to_digit(10).map(|digit| digit as u8).unwrap_or(0),
                                 pause_threshold,
@@ -72,50 +73,34 @@ pub fn step<T: AsRef<str>, S: FnOnce() -> T>(msg: S, level: u8) {
                             );
                         }
                         Key::Char(e) if e == '!' => {
-                            writeln!(stdout, "Shift-1\r").unwrap();
                             (print_threshold, pause_threshold) = set(print_threshold, 1, false);
                         }
                         Key::Char(e) if e == '@' => {
-                            writeln!(stdout, "Shift-2\r").unwrap();
                             (print_threshold, pause_threshold) = set(print_threshold, 2, false);
                         }
                         Key::Char(e) if e == '#' => {
-                            writeln!(stdout, "Shift-3\r").unwrap();
                             (print_threshold, pause_threshold) = set(print_threshold, 3, false);
                         }
                         Key::Char(e) if e == '$' => {
-                            writeln!(stdout, "Shift-4\r").unwrap();
                             (print_threshold, pause_threshold) = set(print_threshold, 4, false);
                         }
                         Key::Char(e) if e == '%' => {
-                            writeln!(stdout, "Shift-5\r").unwrap();
                             (print_threshold, pause_threshold) = set(print_threshold, 5, false);
                         }
                         Key::Char(e) if e == '^' => {
-                            writeln!(stdout, "Shift-6\r").unwrap();
                             (print_threshold, pause_threshold) = set(print_threshold, 6, false);
                         }
                         Key::Char(e) if e == '&' => {
-                            writeln!(stdout, "Shift-7\r").unwrap();
                             (print_threshold, pause_threshold) = set(print_threshold, 7, false);
                         }
                         Key::Char(e) if e == '*' => {
-                            writeln!(stdout, "Shift-8\r").unwrap();
                             (print_threshold, pause_threshold) = set(print_threshold, 8, false);
                         }
                         Key::Char(e) if e == '(' => {
-                            writeln!(stdout, "Shift-9\r").unwrap();
                             (print_threshold, pause_threshold) = set(print_threshold, 9, false);
                         }
-                        Key::Char(e) => {
-                            writeln!(stdout, "{} -- Unexpected input!\r", e).unwrap();
-                        }
-                        _ => {
-                            writeln!(stdout, "  -- Unexpected input!\r").unwrap();
-                        }
+                        _ => {}
                     }
-                } else {
-                    writeln!(stdout, "  -- Unexpected input.\r").unwrap();
                 }
                 show_control_panel(print_threshold, pause_threshold, &mut stdout);
             }
