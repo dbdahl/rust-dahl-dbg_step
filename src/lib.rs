@@ -1,18 +1,52 @@
-use std::fs;
-use std::io::Stdout;
 use std::io::{stdin, stdout, Write};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use termion::event::Key;
 use termion::input::TermRead;
-use termion::raw::{IntoRawMode, RawTerminal};
+use termion::raw::IntoRawMode;
 
 static THRESHOLD: OnceLock<Mutex<(u8, u8)>> = OnceLock::new();
 static SIGNAL_PATH: OnceLock<PathBuf> = OnceLock::new();
 
-pub fn reset() {
+// A wrapper around any `Write` object that replaces `\n` with `\r\n`
+struct LineEndingFix<W: Write> {
+    inner: W,
+}
+
+impl<W: Write> LineEndingFix<W> {
+    fn new(writer: W) -> Self {
+        LineEndingFix { inner: writer }
+    }
+}
+
+impl<W: Write> Write for LineEndingFix<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        // Replace all "\n" with "\r\n" safely
+        let mut cursor = 0;
+        while cursor < buf.len() {
+            if buf[cursor] == b'\n' {
+                self.inner.write_all(b"\r\n")?;
+            } else {
+                self.inner.write_all(&[buf[cursor]])?;
+            }
+            cursor += 1;
+        }
+        Ok(buf.len()) // Indicate that all bytes were "written"
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+pub fn on() {
     let mut data = THRESHOLD.get_or_init(|| Mutex::new((0, 0))).lock().unwrap();
     *data = (0, 0);
+}
+
+pub fn off() {
+    let mut data = THRESHOLD.get_or_init(|| Mutex::new((0, 0))).lock().unwrap();
+    *data = (10, 10);
 }
 
 pub fn set(mut print: u8, mut pause: u8, print_takes_precedence: bool) -> (u8, u8) {
@@ -39,30 +73,33 @@ pub fn step<T: AsRef<str>, S: FnOnce() -> T>(msg: S, level: u8) {
         PathBuf::from(format!("dbg_step_{}", pid))
     });
     if path.is_file() {
-        let _ = fs::remove_file(path);
+        let _ = std::fs::remove_file(path);
         println!(
-            "{{*}}: Reset because '{}' was found in the current working directory.",
+            "{{*}}: On because '{}' was found in the current working directory.",
             path.display()
         );
-        reset();
+        on();
     }
     let level = level.min(9);
     let (mut print_threshold, mut pause_threshold) = get();
     if level >= print_threshold {
-        let mut stdout = stdout().into_raw_mode().unwrap();
-        writeln!(stdout, "{{{}}}: {}\r", level, msg().as_ref()).unwrap();
+        let mut stdout = LineEndingFix::new(stdout().into_raw_mode().unwrap());
+        write!(stdout, "{{{}}}: ", level).unwrap();
+        for _ in level..9 {
+            write!(stdout, "  ").unwrap();
+        }
+        writeln!(stdout, "{}", msg().as_ref()).unwrap();
         stdout.flush().unwrap();
         if level < pause_threshold {
             return;
         }
-        let show_control_panel =
-            |print_threshold, pause_threshold, stdout: &mut RawTerminal<Stdout>| {
-                write!(
+        let show_control_panel = |print_threshold, pause_threshold, stdout: &mut dyn Write| {
+            write!(
                     stdout,
                     "\r{{{},{},{}}}: Keys [0-9] set limit, \u{21E7}[0-9] set pause limit, 'q' quits, ' ' continues ", print_threshold, pause_threshold, path.display())
                 .unwrap();
-                stdout.flush().unwrap();
-            };
+            stdout.flush().unwrap();
+        };
         'outer: loop {
             let stdin = stdin();
             show_control_panel(print_threshold, pause_threshold, &mut stdout);
