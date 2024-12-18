@@ -106,7 +106,12 @@ pub fn step<T: AsRef<str>, S: FnOnce() -> T>(msg: S, level: u8) {
             for key in stdin.keys() {
                 if let Ok(key) = key {
                     match key {
-                        Key::Char('q') | Key::Ctrl('c') => {
+                        Key::Ctrl('c') => {
+                            write!(stdout, "\r\x1B[2K").unwrap();
+                            stdout.flush().unwrap();
+                            std::process::exit(1);
+                        }
+                        Key::Char('q') => {
                             write!(stdout, "\r\x1B[2K").unwrap();
                             stdout.flush().unwrap();
                             set(10, 10, true);
