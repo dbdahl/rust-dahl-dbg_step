@@ -129,6 +129,9 @@ pub fn step<T: AsRef<str>, S: FnOnce() -> T>(msg: S, level: u8) {
                                 true,
                             );
                         }
+                        Key::Char(e) if e == ')' => {
+                            (print_threshold, pause_threshold) = set(print_threshold, 0, false);
+                        }
                         Key::Char(e) if e == '!' => {
                             (print_threshold, pause_threshold) = set(print_threshold, 1, false);
                         }
